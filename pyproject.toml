@@ -25,7 +25,7 @@ classifiers = [
 ]
 dependencies = [
     "pydantic-ai>=2.14.0",
-    "pgtask>=0.1.0",
+    "pgtask>=0.2.0",
     "typing-extensions>=4.10.0",
 ]
 
@@ -47,10 +47,6 @@ dev = [
 [tool.uv]
 default-groups = ["dev"]
 prerelease = "allow"
-
-# Until pgtask 0.2.0 (which ships `get_current_task`) is on PyPI, build from main.
-[tool.uv.sources]
-pgtask = { git = "https://github.com/Kludex/pgtask", branch = "main", subdirectory = "sdks/python" }
 
 [tool.hatch.version]
 source = "vcs"

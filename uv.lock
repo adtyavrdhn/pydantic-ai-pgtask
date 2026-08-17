@@ -1605,11 +1605,19 @@ wheels = [
 
 [[package]]
 name = "pgtask"
-version = "0.1.0"
-source = { git = "https://github.com/Kludex/pgtask?subdirectory=sdks%2Fpython&branch=main#8a1c97b138c165e331e92087380a3849a481fef2" }
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "opentelemetry-api" },
     { name = "psycopg" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a3/cb/22fd9d6ebe7565139becfab490b9a85da8d7c4cc097381384a598f2a3deb/pgtask-0.2.0.tar.gz", hash = "sha256:40d82bca4a26d003650ee98899f5d649809ed44c9a280eb515ea89512fdb9372", size = 168733, upload-time = "2026-08-17T13:23:17.299Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f4/b4/cbbf6a1d2d965727180f68eb1b6a79efa3b910a7bdcef340e831d97003d8/pgtask-0.2.0-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:5efc6dfb47a666c4d8e3a31532f3a4ee551cd8504274bbc64d72025ccd14710c", size = 4113636, upload-time = "2026-08-17T13:23:08.598Z" },
+    { url = "https://files.pythonhosted.org/packages/00/5d/ae3cde966794a69d7c3a7415646f1f69a96ae5248de2538b59fe83eccdce/pgtask-0.2.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:b8860b265ee347cfd6d57986a5485116b11f6bd2997895f7ee55247c496f3466", size = 3975193, upload-time = "2026-08-17T13:23:10.374Z" },
+    { url = "https://files.pythonhosted.org/packages/41/93/df4fa2d9d8433552abd1ed043d9cc8f2ba2a151b540cf9736b4644a6a71f/pgtask-0.2.0-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:6bdcf7efc83a91ce74691544b5da5a5d491de82d6cf9fbd1ad83b8ea23c0247a", size = 4358603, upload-time = "2026-08-17T13:23:12.536Z" },
+    { url = "https://files.pythonhosted.org/packages/5e/89/26d2d89553f8ba6e0c6b2d1d027fe29aa72937b5bd332d6c8c8c752d23dc/pgtask-0.2.0-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:9c4f954c067ee17e278b57008ff9e619b69912cb2695aaa5d51e2390e256e7d9", size = 4387928, upload-time = "2026-08-17T13:23:14.164Z" },
+    { url = "https://files.pythonhosted.org/packages/08/fb/b8d376a070ffeefa170ece71f2cbcdf32a046e2ce44512e46a0d5483363b/pgtask-0.2.0-cp310-abi3-win_amd64.whl", hash = "sha256:a3160bc86bdecbc255e30d74228bb665f696c00d18b77a9a0b21665305c2733d", size = 3694710, upload-time = "2026-08-17T13:23:15.87Z" },
 ]
 
 [[package]]
@@ -1849,7 +1857,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "pgtask", git = "https://github.com/Kludex/pgtask?subdirectory=sdks%2Fpython&branch=main" },
+    { name = "pgtask", specifier = ">=0.2.0" },
     { name = "pydantic-ai", specifier = ">=2.14.0" },
     { name = "typing-extensions", specifier = ">=4.10.0" },
 ]
