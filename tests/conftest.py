@@ -1,0 +1,91 @@
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from typing import Any, cast
+
+import pytest
+from pgtask import Task
+from pydantic import TypeAdapter
+from pydantic_ai import ModelMessage, ModelResponse
+from pydantic_ai.messages import TextPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
+
+JSON_ADAPTER: TypeAdapter[Any] = TypeAdapter(Any)
+
+
+@dataclass
+class CheckpointStore:
+    """In-memory stand-in for pgtask's step checkpoint table.
+
+    Mirrors the durability contract that matters to this package: a step keyed by
+    `(name, occurrence)` runs its operation once, stores the JSON result, and serves
+    the stored result on every later call - exactly what a pgtask replay does after
+    a crash.
+    """
+
+    checkpoints: dict[tuple[str, int], Any] = field(default_factory=dict)
+    executions: list[tuple[str, int]] = field(default_factory=list)
+
+    async def step(self, name: str, occurrence: int, operation: Callable[[], Awaitable[Any]]) -> Any:
+        key = (name, occurrence)
+        if key not in self.checkpoints:
+            self.executions.append(key)
+            result = await operation()
+            self.checkpoints[key] = JSON_ADAPTER.dump_python(result, mode='json')
+        return self.checkpoints[key]
+
+
+def make_task(store: CheckpointStore) -> Task:
+    """Build a `Task` whose `step` is backed by an in-memory checkpoint store."""
+
+    class FakeNativeContext:
+        async def step(self, name: str, occurrence: int, operation: Callable[[], Awaitable[Any]]) -> Any:
+            return await store.step(name, occurrence, operation)
+
+    now = datetime.now(timezone.utc)
+    return Task(
+        id='00000000-0000-0000-0000-000000000001',
+        parent_task_id=None,
+        queue_name='default',
+        task_name='test',
+        handler_version=1,
+        payload=None,
+        headers={},
+        state='running',
+        attempt=1,
+        max_attempts=5,
+        run_at=now,
+        created_at=now,
+        _context=cast(Any, FakeNativeContext()),
+    )
+
+
+def make_model(counter: dict[str, int] | None = None, content: str = 'ok') -> FunctionModel:
+    def fn(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        if counter is not None:
+            counter['calls'] += 1
+        return ModelResponse(parts=[TextPart(content=content)])
+
+    async def stream_fn(messages: list[ModelMessage], info: AgentInfo) -> Any:
+        if counter is not None:
+            counter['calls'] += 1
+        yield content
+
+    return FunctionModel(fn, stream_function=stream_fn, model_name='fn')
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return 'asyncio'
+
+
+@pytest.fixture
+def store() -> CheckpointStore:
+    return CheckpointStore()
+
+
+@pytest.fixture
+def task(store: CheckpointStore) -> Task:
+    return make_task(store)

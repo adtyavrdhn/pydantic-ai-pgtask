@@ -1,0 +1,7 @@
+#!/bin/sh -e
+
+set -x
+
+uv run ruff format --check --diff pydantic_ai_pgtask tests
+uv run ruff check pydantic_ai_pgtask tests
+uv run mypy pydantic_ai_pgtask tests
