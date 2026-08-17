@@ -11,7 +11,7 @@ from pgtask import Client, Task, TaskRegistry, Worker
 from pydantic_ai import Agent
 from testcontainers.community.postgres import PostgresContainer
 
-from pydantic_ai_pgtask import PGTaskDurability, durable_task
+from pydantic_ai_pgtask import PGTaskDurability
 
 from .conftest import make_model
 
@@ -56,7 +56,6 @@ async def test_agent_run_inside_worker_is_durable(db_dsn: str) -> None:
     tasks = TaskRegistry(queue_name='agents')
 
     @tasks.task('analyse')
-    @durable_task
     async def analyse(task: Task, payload: dict[str, Any]) -> dict[str, Any]:
         result = await agent.run(payload['prompt'])
         return {'output': result.output}
@@ -88,7 +87,6 @@ async def test_replay_after_crash_serves_checkpoint(db_dsn: str) -> None:
     attempts: list[int] = []
 
     @tasks.task('crash', retry_delay=0.1)
-    @durable_task
     async def crash(task: Task, payload: dict[str, Any]) -> dict[str, Any]:
         result = await agent.run('go')
         attempts.append(task.attempt)

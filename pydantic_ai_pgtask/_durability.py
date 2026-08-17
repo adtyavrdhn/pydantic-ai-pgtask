@@ -40,7 +40,7 @@ class PGTaskDurability(BaseDurabilityCapability[AgentDepsT]):
     """Capability that makes an agent durable by checkpointing I/O into pgtask steps.
 
     Attach it to an agent via `capabilities=[PGTaskDurability()]` and call `agent.run()`
-    inside a handler wrapped with [`durable_task`][pydantic_ai_pgtask.durable_task]:
+    inside any pgtask handler:
     every model request, MCP call, and function tool call is wrapped in `task.step(...)`,
     so a worker crash mid-run resumes from the last completed step instead of restarting -
     no tokens are re-spent, and side effects run once. Outside a durable task the
@@ -53,12 +53,11 @@ class PGTaskDurability(BaseDurabilityCapability[AgentDepsT]):
     Example:
         ```python
         from pydantic_ai import Agent
-        from pydantic_ai_pgtask import PGTaskDurability, durable_task
+        from pydantic_ai_pgtask import PGTaskDurability
 
         agent = Agent('openai:gpt-5.2', name='analyst', capabilities=[PGTaskDurability()])
 
         @tasks.task('analyse')
-        @durable_task
         async def analyse(task, payload):
             result = await agent.run(payload['prompt'])
             return {'output': result.output}

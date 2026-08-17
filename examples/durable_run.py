@@ -19,14 +19,13 @@ from pgtask import Client, Task, TaskRegistry, Worker
 from pydantic_ai import Agent
 from testcontainers.community.postgres import PostgresContainer
 
-from pydantic_ai_pgtask import PGTaskDurability, durable_task
+from pydantic_ai_pgtask import PGTaskDurability
 
 tasks = TaskRegistry(queue_name='agents')
 agent = Agent('openai:gpt-5.2', name='analyst', capabilities=[PGTaskDurability()])
 
 
 @tasks.task('analyse')
-@durable_task
 async def analyse(task: Task, payload: dict[str, Any]) -> dict[str, Any]:
     result = await agent.run(payload['prompt'])
     return {'output': result.output}

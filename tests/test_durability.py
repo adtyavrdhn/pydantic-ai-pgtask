@@ -21,9 +21,9 @@ from pydantic_ai.tools import RunContext
 from pydantic_ai.toolsets import ExternalToolset, FunctionToolset
 from pydantic_ai.usage import RunUsage
 
-from pydantic_ai_pgtask import PGTaskDurability, durable
+from pydantic_ai_pgtask import PGTaskDurability
 
-from .conftest import CheckpointStore, make_model, make_task
+from .conftest import CheckpointStore, make_model, make_task, running_task
 
 pytestmark = pytest.mark.anyio
 
@@ -102,7 +102,7 @@ async def test_run_outside_task_is_transparent() -> None:
 
 async def test_run_inside_task_completes(task: Task) -> None:
     agent = Agent(make_model(), name='a', capabilities=[PGTaskDurability()])
-    async with durable(task):
+    async with running_task(task):
         result = await agent.run('hi')
     assert result.output == 'ok'
 
@@ -111,11 +111,11 @@ async def test_replay_serves_cached_model_response(store: CheckpointStore) -> No
     counter = {'calls': 0}
     agent = Agent(make_model(counter), name='crash', capabilities=[PGTaskDurability()])
 
-    async with durable(make_task(store)):
+    async with running_task(make_task(store)):
         first = await agent.run('hi')
 
     # Retry after a simulated crash: a fresh Task backed by the same store.
-    async with durable(make_task(store)):
+    async with running_task(make_task(store)):
         replayed = await agent.run('hi')
 
     assert counter['calls'] == 1
@@ -143,10 +143,10 @@ async def test_replay_does_not_rerun_function_tool(store: CheckpointStore) -> No
         capabilities=[PGTaskDurability()],
     )
 
-    async with durable(make_task(store)):
+    async with running_task(make_task(store)):
         first = await agent.run('charge it')
 
-    async with durable(make_task(store)):
+    async with running_task(make_task(store)):
         replayed = await agent.run('charge it')
 
     assert tool_calls['calls'] == 1
@@ -174,10 +174,10 @@ async def test_leaf_toolset_without_id_is_durable(store: CheckpointStore) -> Non
         capabilities=[PGTaskDurability()],
     )
 
-    async with durable(make_task(store)):
+    async with running_task(make_task(store)):
         first = await agent.run('charge it')
 
-    async with durable(make_task(store)):
+    async with running_task(make_task(store)):
         replayed = await agent.run('charge it')
 
     assert tool_calls['calls'] == 1
@@ -202,7 +202,7 @@ async def test_registered_model_selected_per_run(task: Task, store: CheckpointSt
         capabilities=[PGTaskDurability(models={'cheap': FunctionModel(cheap_fn, model_name='cheap')})],
     )
 
-    async with durable(task):
+    async with running_task(task):
         default_result = await agent.run('hi')
         cheap_result = await agent.run('hi', model='cheap')
 
@@ -216,7 +216,7 @@ async def test_registered_model_selected_per_run(task: Task, store: CheckpointSt
 
 async def test_string_default_model_checkpoints_without_suffix(task: Task, store: CheckpointStore) -> None:
     agent = Agent('test', name='strdef', capabilities=[PGTaskDurability()])
-    async with durable(task):
+    async with running_task(task):
         result = await agent.run('hi')
     assert result.output
     assert ('strdef__model.request', 0) in store.executions
@@ -230,7 +230,7 @@ async def test_runtime_function_toolset_rejected(task: Task) -> None:
     def echo(value: str) -> str:  # pragma: no cover - rejected before it can run
         return value
 
-    async with durable(task):
+    async with running_task(task):
         with pytest.raises(UserError, match='cannot be passed to `run\\(toolsets=...\\)` at runtime'):
             await agent.run('hi', toolsets=[toolset])
 
@@ -258,7 +258,7 @@ def _late_toolset(calls: dict[str, int]) -> FunctionToolset[None]:
 async def test_override_toolsets_rejected_inside_task(task: Task) -> None:
     calls = {'calls': 0}
     agent: Agent[None, str] = Agent(_tool_calling_model('late'), name='a', capabilities=[PGTaskDurability()])
-    async with durable(task):
+    async with running_task(task):
         with agent.override(toolsets=[_late_toolset(calls)]):
             with pytest.raises(UserError, match='cannot be passed to `run\\(toolsets=...\\)` at runtime'):
                 await agent.run('hi')
@@ -282,7 +282,7 @@ async def test_override_tools_rejected_inside_task(task: Task) -> None:
         return 'late result'
 
     agent: Agent[None, str] = Agent(_tool_calling_model('late'), name='a', capabilities=[PGTaskDurability()])
-    async with durable(task):
+    async with running_task(task):
         with agent.override(tools=[late]):
             with pytest.raises(UserError, match='cannot be passed to `run\\(toolsets=...\\)` at runtime'):
                 await agent.run('hi')
@@ -331,10 +331,10 @@ async def test_capability_owned_toolset_is_durable(store: CheckpointStore) -> No
         capabilities=[DemoCapability(), PGTaskDurability()],
     )
 
-    async with durable(make_task(store)):
+    async with running_task(make_task(store)):
         first = await agent.run('charge it')
 
-    async with durable(make_task(store)):
+    async with running_task(make_task(store)):
         replayed = await agent.run('charge it')
 
     assert tool_calls['calls'] == 1
@@ -354,14 +354,14 @@ async def test_runtime_toolset_still_rejected_alongside_capability_toolset(task:
             return owned
 
     agent: Agent[None, str] = Agent(make_model(), name='a', capabilities=[DemoCapability(), PGTaskDurability()])
-    async with durable(task):
+    async with running_task(task):
         with pytest.raises(UserError, match='cannot be passed to `run\\(toolsets=...\\)` at runtime'):
             await agent.run('hi', toolsets=[_late_toolset({'calls': 0})])
 
 
 async def test_runtime_external_toolset_allowed(task: Task) -> None:
     agent: Agent[None, str] = Agent(make_model(), name='a', capabilities=[PGTaskDurability()])
-    async with durable(task):
+    async with running_task(task):
         result = await agent.run('hi', toolsets=[ExternalToolset[None](tool_defs=[])])
     assert result.output == 'ok'
 
@@ -394,7 +394,7 @@ async def test_mcp_tool_call_inside_task(task: Task) -> None:
         capabilities=[PGTaskDurability()],
     )
 
-    async with durable(task):
+    async with running_task(task):
         result = await agent.run('add 2 and 3')
     assert result.output == 'summed'
 
@@ -425,7 +425,7 @@ async def test_event_stream_handler_receives_events(task: Task) -> None:
         capabilities=[PGTaskDurability(event_stream_handler=handler)],
     )
 
-    async with durable(task):
+    async with running_task(task):
         result = await agent.run('hi')
 
     assert result.output == 'done'
@@ -436,7 +436,7 @@ async def test_event_stream_handler_receives_events(task: Task) -> None:
 async def test_run_stream_inside_task_replays_buffered_stream(task: Task) -> None:
     counter = {'calls': 0}
     agent = Agent(make_model(counter), name='a', capabilities=[PGTaskDurability()])
-    async with durable(task):
+    async with running_task(task):
         async with agent.run_stream('hi') as result:
             assert await result.get_output() == 'ok'
     assert counter['calls'] == 1
@@ -444,7 +444,7 @@ async def test_run_stream_inside_task_replays_buffered_stream(task: Task) -> Non
 
 async def test_run_stream_events_inside_task(task: Task) -> None:
     agent = Agent(make_model(), name='a', capabilities=[PGTaskDurability()])
-    async with durable(task):
+    async with running_task(task):
         async with agent.run_stream_events('hi') as stream:
             events = [event async for event in stream]
     assert any(isinstance(e, PartStartEvent) for e in events)
@@ -454,11 +454,11 @@ async def test_stream_replay_serves_cached_events(store: CheckpointStore) -> Non
     counter = {'calls': 0}
     agent = Agent(make_model(counter), name='a', capabilities=[PGTaskDurability()])
 
-    async with durable(make_task(store)):
+    async with running_task(make_task(store)):
         async with agent.run_stream('hi') as result:
             first = await result.get_output()
 
-    async with durable(make_task(store)):
+    async with running_task(make_task(store)):
         async with agent.run_stream('hi') as result:
             replayed = await result.get_output()
 
@@ -468,7 +468,7 @@ async def test_stream_replay_serves_cached_events(store: CheckpointStore) -> Non
 
 async def test_iter_inside_task(task: Task) -> None:
     agent = Agent(make_model(), name='a', capabilities=[PGTaskDurability()])
-    async with durable(task):
+    async with running_task(task):
         async with agent.iter('hi') as run:
             async for _ in run:
                 pass
@@ -501,7 +501,7 @@ async def test_cancel_suspended_response_is_checkpointed(task: Task) -> None:
         await request.model.cancel_suspended_response(response)
         return response
 
-    async with durable(task):
+    async with running_task(task):
         result = await bound.wrap_model_request(ctx, request_context=request_context, handler=handler)
 
     assert result is response

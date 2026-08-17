@@ -23,14 +23,13 @@ from typing import Any
 
 from pgtask import Client, Task, TaskRegistry, Worker
 from pydantic_ai import Agent
-from pydantic_ai_pgtask import PGTaskDurability, durable_task
+from pydantic_ai_pgtask import PGTaskDurability
 
 tasks = TaskRegistry(queue_name="agents")
 agent = Agent("openai:gpt-5.2", name="analyst", capabilities=[PGTaskDurability()])
 
 
 @tasks.task("analyse")
-@durable_task
 async def analyse(task: Task, payload: dict[str, Any]) -> dict[str, Any]:
     result = await agent.run(payload["prompt"])
     return {"output": result.output}
@@ -52,7 +51,7 @@ You author a task, call the agent inside it, and run it durably. That's the whol
 
 ## How it works
 
-`PGTaskDurability` is a Pydantic AI capability. When the agent runs inside a handler wrapped with `@durable_task`, it wraps:
+`PGTaskDurability` is a Pydantic AI capability. When the agent runs inside any pgtask handler (discovered via pgtask's `get_current_task()`), it wraps:
 
 - every **model request** in a `task.step(...)` checkpoint,
 - every **function tool call** in its own checkpoint, so side effects run exactly once,

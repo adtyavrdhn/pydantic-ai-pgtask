@@ -1,19 +1,15 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager
-from contextvars import ContextVar
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from functools import wraps
-from typing import Any, TypeVar
+from typing import TypeVar
 
-from pgtask import Task
-from pydantic_ai.exceptions import UserError
+from pgtask import Task, get_current_task
 
 StepT = TypeVar('StepT')
-PayloadT = TypeVar('PayloadT')
-ResultT = TypeVar('ResultT')
+
+_CONTEXT_CACHE_MAX = 1024
 
 
 @dataclass
@@ -35,50 +31,22 @@ class DurableTaskContext:
         return await self.task.step(name, operation, occurrence=occurrence)
 
 
-_current_context: ContextVar[DurableTaskContext | None] = ContextVar('pydantic_ai_pgtask_context', default=None)
+# Occurrence counters must be shared across every step call of one attempt, wherever in
+# the call graph it happens, and must reset on a retry - hence keyed by (task id, attempt)
+# rather than stored in a ContextVar (a set() inside a spawned subtask would not be seen
+# by its siblings). Bounded so a long-lived worker cannot grow it without limit.
+_contexts: dict[tuple[str, int], DurableTaskContext] = {}
 
 
 def current_context() -> DurableTaskContext | None:
-    """Return the current durable task context, or None when not inside one."""
-    return _current_context.get()
-
-
-@asynccontextmanager
-async def durable(task: Task) -> AsyncIterator[DurableTaskContext]:
-    """Enter a durable context for `task`, making agent runs inside it durable.
-
-    Usually you use [`durable_task`][pydantic_ai_pgtask.durable_task] instead and never
-    touch this directly.
-    """
-    if _current_context.get() is not None:
-        raise UserError('A durable pgtask context is already active; durable contexts cannot be nested.')
-    ctx = DurableTaskContext(task)
-    token = _current_context.set(ctx)
-    try:
-        yield ctx
-    finally:
-        _current_context.reset(token)
-
-
-def durable_task(
-    handler: Callable[[Task, PayloadT], Awaitable[ResultT]],
-) -> Callable[[Task, PayloadT], Awaitable[ResultT]]:
-    """Wrap a pgtask handler so agent runs inside it are checkpointed.
-
-    Apply it between `@tasks.task(...)` and the handler:
-
-    ```python
-    @tasks.task('analyse')
-    @durable_task
-    async def analyse(task: Task, payload: dict[str, Any]) -> dict[str, Any]:
-        result = await agent.run(payload['prompt'])
-        return {'output': result.output}
-    ```
-    """
-
-    @wraps(handler)
-    async def wrapper(task: Task, payload: Any) -> ResultT:
-        async with durable(task):
-            return await handler(task, payload)
-
-    return wrapper
+    """Return the durable context for the ambient pgtask task, or None outside a handler."""
+    task = get_current_task()
+    if task is None:
+        return None
+    key = (task.id, task.attempt)
+    ctx = _contexts.get(key)
+    if ctx is None:
+        while len(_contexts) >= _CONTEXT_CACHE_MAX:
+            _contexts.pop(next(iter(_contexts)))
+        ctx = _contexts[key] = DurableTaskContext(task)
+    return ctx

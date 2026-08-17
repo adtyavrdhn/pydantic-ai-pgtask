@@ -1,38 +1,34 @@
 from __future__ import annotations
 
-from typing import Any, cast
-
 import pytest
 from pgtask import Task
-from pydantic_ai.exceptions import UserError
 
-from pydantic_ai_pgtask import current_context, durable, durable_task
+from pydantic_ai_pgtask import current_context
+from pydantic_ai_pgtask._context import _CONTEXT_CACHE_MAX, _contexts
 
-from .conftest import CheckpointStore
+from .conftest import CheckpointStore, make_task, running_task
 
 pytestmark = pytest.mark.anyio
 
 
-async def test_no_context_by_default() -> None:
+async def test_no_context_outside_handler() -> None:
     assert current_context() is None
 
 
-async def test_durable_sets_and_resets_context(task: Task) -> None:
-    async with durable(task) as ctx:
-        assert current_context() is ctx
+async def test_context_follows_ambient_task(task: Task) -> None:
+    async with running_task(task):
+        ctx = current_context()
+        assert ctx is not None
         assert ctx.task is task
+        # Same attempt resolves to the same context (and thus shared counters).
+        assert current_context() is ctx
     assert current_context() is None
-
-
-async def test_durable_rejects_nesting(task: Task) -> None:
-    async with durable(task):
-        with pytest.raises(UserError, match='cannot be nested'):
-            async with durable(task):
-                pass  # pragma: no cover
 
 
 async def test_step_occurrences_count_per_name(task: Task, store: CheckpointStore) -> None:
-    async with durable(task) as ctx:
+    async with running_task(task):
+        ctx = current_context()
+        assert ctx is not None
 
         async def one() -> int:
             return 1
@@ -44,35 +40,42 @@ async def test_step_occurrences_count_per_name(task: Task, store: CheckpointStor
     assert store.executions == [('a', 0), ('a', 1), ('b', 0)]
 
 
-async def test_replay_serves_cached_step(task: Task, store: CheckpointStore) -> None:
+async def test_replay_serves_cached_step(store: CheckpointStore) -> None:
     calls = {'n': 0}
 
     async def op() -> int:
         calls['n'] += 1
         return calls['n']
 
-    async with durable(task) as ctx:
+    async with running_task(make_task(store)):
+        ctx = current_context()
+        assert ctx is not None
         assert await ctx.step('s', op) == 1
 
-    # A retry enters a fresh context: occurrence counters restart at 0, so the
-    # step resolves to the same checkpoint and the operation does not re-run.
-    async with durable(task) as ctx:
+    # A retry is a fresh Task backed by the same checkpoints: occurrence counters
+    # restart at 0, so the step resolves to the same checkpoint and does not re-run.
+    async with running_task(make_task(store)):
+        ctx = current_context()
+        assert ctx is not None
         assert await ctx.step('s', op) == 1
 
     assert calls['n'] == 1
 
 
-async def test_durable_task_wraps_handler(task: Task) -> None:
-    seen: dict[str, Any] = {}
+async def test_retry_gets_fresh_occurrence_counters(store: CheckpointStore) -> None:
+    task = make_task(store)
+    async with running_task(task):
+        first = current_context()
+    retry = make_task(store, attempt=2)
+    object.__setattr__(retry, 'id', task.id)
+    async with running_task(retry):
+        second = current_context()
+    assert first is not None and second is not None
+    assert first is not second
 
-    @durable_task
-    async def handler(t: Task, payload: dict[str, Any]) -> str:
-        seen['ctx'] = current_context()
-        seen['task'] = t
-        return cast(str, payload['value'])
 
-    result = await handler(task, {'value': 'done'})
-    assert result == 'done'
-    assert seen['task'] is task
-    assert seen['ctx'] is not None
-    assert current_context() is None
+async def test_context_cache_is_bounded(store: CheckpointStore) -> None:
+    for _ in range(_CONTEXT_CACHE_MAX + 5):
+        async with running_task(make_task(store)):
+            assert current_context() is not None
+    assert len(_contexts) <= _CONTEXT_CACHE_MAX

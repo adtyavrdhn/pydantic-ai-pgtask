@@ -6,9 +6,9 @@ from pydantic_ai.models.test import TestModel
 from pydantic_ai.tools import RunContext
 from pydantic_ai.usage import RunUsage
 
-from pydantic_ai_pgtask import PGTaskFunctionToolset, durable
+from pydantic_ai_pgtask import PGTaskFunctionToolset
 
-from .conftest import CheckpointStore, make_task
+from .conftest import CheckpointStore, make_task, running_task
 
 pytestmark = pytest.mark.anyio
 
@@ -66,13 +66,13 @@ async def test_call_tool_inside_context_is_checkpointed(store: CheckpointStore) 
     toolset = PGTaskFunctionToolset(inner, step_name_prefix='a')
     ctx = _run_context()
 
-    async with durable(make_task(store)):
+    async with running_task(make_task(store)):
         tools = await toolset.get_tools(ctx)
         first = await toolset.call_tool('shout', {'value': 'hi'}, ctx, tools['shout'])
 
     # Retry after a simulated crash: the checkpointed result is served, so the
     # side effect happens exactly once.
-    async with durable(make_task(store)):
+    async with running_task(make_task(store)):
         replay = await toolset.call_tool('shout', {'value': 'hi'}, ctx, tools['shout'])
 
     assert first == replay == 'HI'

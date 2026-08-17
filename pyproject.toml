@@ -48,6 +48,10 @@ dev = [
 default-groups = ["dev"]
 prerelease = "allow"
 
+# Until pgtask 0.2.0 (which ships `get_current_task`) is on PyPI, build from main.
+[tool.uv.sources]
+pgtask = { git = "https://github.com/Kludex/pgtask", branch = "main", subdirectory = "sdks/python" }
+
 [tool.hatch.version]
 source = "vcs"
 

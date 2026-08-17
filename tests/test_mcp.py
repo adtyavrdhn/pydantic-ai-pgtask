@@ -10,7 +10,9 @@ from pydantic_ai.models.test import TestModel
 from pydantic_ai.tools import RunContext
 from pydantic_ai.usage import RunUsage
 
-from pydantic_ai_pgtask import PGTaskMCPToolset, durable
+from pydantic_ai_pgtask import PGTaskMCPToolset
+
+from .conftest import running_task
 
 MCP_SCRIPT = str(Path(__file__).resolve().parent / 'fixtures' / 'mcp_server.py')
 
@@ -64,7 +66,7 @@ async def test_aenter_aexit() -> None:
 async def test_get_tools_and_call_tool_are_checkpointed(task: Task) -> None:
     toolset = PGTaskMCPToolset(_make_server(), step_name_prefix='a')
     run_context = _run_context()
-    async with durable(task):
+    async with running_task(task):
         tools = await toolset.get_tools(run_context)
         assert 'add' in tools
         result = await toolset.call_tool('add', {'a': 2, 'b': 3}, run_context, tools['add'])
@@ -86,7 +88,7 @@ async def test_get_instructions_without_context_passes_through() -> None:
 
 async def test_get_instructions_inside_context_returns_none_when_disabled(task: Task) -> None:
     toolset = PGTaskMCPToolset(_make_server(), step_name_prefix='a')
-    async with durable(task):
+    async with running_task(task):
         result = await toolset.get_instructions(_run_context())
     assert result is None
 
@@ -95,7 +97,7 @@ async def test_get_instructions_inside_context_with_include(task: Task) -> None:
     server: FastMCP[None] = FastMCP(name='hello', instructions='Be brief.')
     inner = MCPToolset[None](server, include_instructions=True)
     toolset = PGTaskMCPToolset(inner, step_name_prefix='a')
-    async with durable(task):
+    async with running_task(task):
         result = await toolset.get_instructions(_run_context())
     assert result is not None
 
@@ -109,7 +111,7 @@ async def test_stdio_get_tools_and_call_tool_inside_context(task: Task) -> None:
     server = MCPToolset(MCP_SCRIPT)
     toolset = PGTaskMCPToolset(server, step_name_prefix='a')
     run_context = _run_context()
-    async with durable(task):
+    async with running_task(task):
         async with server:
             tools = await toolset.get_tools(run_context)
             assert 'add' in tools
@@ -124,7 +126,7 @@ async def test_stdio_get_tools_without_cache(task: Task) -> None:
     server = MCPToolset(MCP_SCRIPT, cache_tools=False)
     toolset = PGTaskMCPToolset(server, step_name_prefix='a')
     run_context = _run_context()
-    async with durable(task):
+    async with running_task(task):
         async with server:
             first = await toolset.get_tools(run_context)
             second = await toolset.get_tools(run_context)

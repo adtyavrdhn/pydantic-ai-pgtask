@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, cast
+from uuid import uuid4
 
 import pytest
 from pgtask import Task
+from pgtask.client import _current_task
 from pydantic import TypeAdapter
 from pydantic_ai import ModelMessage, ModelResponse
 from pydantic_ai.messages import TextPart
@@ -37,7 +40,7 @@ class CheckpointStore:
         return self.checkpoints[key]
 
 
-def make_task(store: CheckpointStore) -> Task:
+def make_task(store: CheckpointStore, attempt: int = 1) -> Task:
     """Build a `Task` whose `step` is backed by an in-memory checkpoint store."""
 
     class FakeNativeContext:
@@ -46,7 +49,7 @@ def make_task(store: CheckpointStore) -> Task:
 
     now = datetime.now(timezone.utc)
     return Task(
-        id='00000000-0000-0000-0000-000000000001',
+        id=str(uuid4()),
         parent_task_id=None,
         queue_name='default',
         task_name='test',
@@ -54,7 +57,7 @@ def make_task(store: CheckpointStore) -> Task:
         payload=None,
         headers={},
         state='running',
-        attempt=1,
+        attempt=attempt,
         max_attempts=5,
         run_at=now,
         created_at=now,
@@ -79,6 +82,16 @@ def make_model(counter: dict[str, int] | None = None, content: str = 'ok') -> Fu
 @pytest.fixture
 def anyio_backend() -> str:
     return 'asyncio'
+
+
+@asynccontextmanager
+async def running_task(task: Task) -> AsyncIterator[Task]:
+    """Make `task` ambient, exactly as pgtask's worker adapter does around a handler."""
+    token = _current_task.set(task)
+    try:
+        yield task
+    finally:
+        _current_task.reset(token)
 
 
 @pytest.fixture
