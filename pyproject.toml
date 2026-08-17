@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling", "uv-dynamic-versioning"]
 build-backend = "hatchling.build"
 
 [project]
@@ -49,7 +49,11 @@ default-groups = ["dev"]
 prerelease = "allow"
 
 [tool.hatch.version]
-source = "vcs"
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+vcs = "git"
+style = "pep440"
 
 [tool.hatch.build.targets.wheel]
 packages = ["pydantic_ai_pgtask"]
