@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 from ._context import DurableTaskContext, current_context
-from ._durability import PGTaskDurability, PGTaskParallelExecutionMode
-from ._function_toolset import PGTaskFunctionToolset
-from ._mcp import PGTaskMCPToolset
+from ._durability import CheckpointDecodeError, PGTaskDurability, PGTaskOperationBackend, PGTaskParallelExecutionMode
 
 __all__ = [
+    'CheckpointDecodeError',
     'DurableTaskContext',
     'PGTaskDurability',
-    'PGTaskFunctionToolset',
-    'PGTaskMCPToolset',
+    'PGTaskOperationBackend',
     'PGTaskParallelExecutionMode',
     'current_context',
 ]
