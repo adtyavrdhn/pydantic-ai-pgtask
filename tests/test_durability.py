@@ -393,15 +393,13 @@ async def test_mcp_tool_call_inside_task(task: Task, store: CheckpointStore) -> 
             return ModelResponse(parts=[ToolCallPart(tool_name='add', args={'a': 2, 'b': 3})])
         return ModelResponse(parts=[TextPart(content='summed')])
 
-    agent = Agent(
-        FunctionModel(fn, model_name='fn'),
-        name='calc',
-        toolsets=[MCPToolset[None](server, id='calc')],
-        capabilities=[PGTaskDurability()],
-    )
+    def make_agent(toolset: MCPToolset[None]) -> Agent[None, str]:
+        return Agent(
+            FunctionModel(fn, model_name='fn'), name='calc', toolsets=[toolset], capabilities=[PGTaskDurability()]
+        )
 
     async with running_task(task):
-        result = await agent.run('add 2 and 3')
+        result = await make_agent(MCPToolset[None](server, id='calc')).run('add 2 and 3')
     assert result.output == 'summed'
     # Step names are what a replay looks checkpoints up by, so they must not drift across releases.
     assert store.executions == [
@@ -410,6 +408,12 @@ async def test_mcp_tool_call_inside_task(task: Task, store: CheckpointStore) -> 
         ('calc__mcp_server__calc.call_tool', 0),
         ('calc__model.request', 1),
     ]
+
+    # A replay served entirely from checkpoints doesn't connect, so an unreachable server is fine.
+    async with running_task(make_task(store)):
+        replayed = await make_agent(MCPToolset[None]('http://127.0.0.1:9/mcp', id='calc')).run('add 2 and 3')
+    assert replayed.output == 'summed'
+    assert len(store.executions) == 4
 
 
 async def test_event_stream_handler_receives_events(task: Task) -> None:

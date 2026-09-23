@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from typing import Any, ClassVar, Literal, cast
+from typing import Any, ClassVar, Literal
 
 from pydantic import ValidationError
 from pydantic_ai.agent import EventStreamHandler, ParallelExecutionMode
@@ -38,8 +38,8 @@ class _PGTaskCodec(DurabilityCodec):
 
     Pydantic AI decodes a tool's checkpoint inside the tool call, where a `ValidationError` is read as
     bad model arguments: the model would be asked to retry, and the retry would run the tool again.
-    Raising something else keeps a side effect from repeating. This includes a tool's raw return
-    value checkpointed by 0.0.2, so tasks in flight have to finish before upgrading from it.
+    Raising something else keeps a side effect from repeating. This includes the raw function and MCP
+    tool results that 0.0.2 checkpointed, so tasks in flight have to finish before upgrading from it.
     """
 
     def dump(self, tp: Any, value: Any) -> Any:
@@ -104,7 +104,8 @@ class PGTaskDurability(BaseDurabilityCapability[AgentDepsT]):
         durable_container_noun='task',
         codec=_PGTaskCodec(),
         wrapped_toolset_kinds=frozenset({'function', 'mcp', 'dynamic'}),
-        toolset_lifecycles={'function': 'enter-always', 'mcp': 'enter-always', 'dynamic': 'enter-never'},
+        # The first MCP step connects, so a replay whose MCP steps are all checkpointed never does.
+        toolset_lifecycles={'function': 'enter-always', 'mcp': 'enter-in-durable-unit', 'dynamic': 'enter-never'},
         # `wrap_run` applies `parallel_execution_mode`, which already excludes `'parallel'`.
         sequential_tools_in_durable_context=False,
         unsupported_runtime_toolset_kinds=frozenset({'function', 'mcp', 'dynamic'}),
@@ -139,7 +140,7 @@ class PGTaskDurability(BaseDurabilityCapability[AgentDepsT]):
                 with its checkpoints.
         """
         super().__init__(models=models, event_stream_handler=event_stream_handler, name=name)
-        self._parallel_execution_mode = cast(ParallelExecutionMode, parallel_execution_mode)
+        self._parallel_execution_mode: ParallelExecutionMode = parallel_execution_mode
 
     @property
     def in_durable_context(self) -> bool:
